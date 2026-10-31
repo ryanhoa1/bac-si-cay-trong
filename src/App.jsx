@@ -132,10 +132,27 @@ export default function App() {
     setErrorMsg('');
     const reader = new FileReader();
     reader.onloadend = () => {
-      setSelectedImage(reader.result);
-      const base64Data = reader.result.split(',')[1];
-      setImageBase64({ data: base64Data, mimeType: file.type || 'image/jpeg' });
-      setDiagnosisResult(null);
+      const original = reader.result;
+      const img = new Image();
+      img.onload = () => {
+        // Nén ảnh về tối đa 1280px để gửi nhanh và không vượt giới hạn
+        const MAX = 1280;
+        const scale = Math.min(1, MAX / Math.max(img.width, img.height));
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.round(img.width * scale);
+        canvas.height = Math.round(img.height * scale);
+        canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+        const compressed = canvas.toDataURL('image/jpeg', 0.85);
+        setSelectedImage(compressed);
+        setImageBase64({ data: compressed.split(',')[1], mimeType: 'image/jpeg' });
+        setDiagnosisResult(null);
+      };
+      img.onerror = () => {
+        setSelectedImage(original);
+        setImageBase64({ data: original.split(',')[1], mimeType: file.type || 'image/jpeg' });
+        setDiagnosisResult(null);
+      };
+      img.src = original;
     };
     reader.readAsDataURL(file);
   };
@@ -182,30 +199,52 @@ Trả về kết quả định dạng JSON thuần túy với các trường:
         throw new Error('Vui lòng nhập Gemini API Key hoặc địa chỉ Webhook trong mục Cài đặt (biểu tượng bánh răng góc trên bên phải) để phân tích ảnh chụp thực tế.');
       }
 
-      const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{
-              parts: [
-                { text: promptText },
-                { inlineData: { mimeType: imageBase64.mimeType, data: imageBase64.data } }
-              ]
-            }],
-            generationConfig: { responseMimeType: "application/json" }
-          })
-        }
-      );
+      const models = ['gemini-2.5-flash', 'gemini-flash-latest', 'gemini-2.0-flash'];
+      const body = JSON.stringify({
+        contents: [{
+          parts: [
+            { text: promptText },
+            { inlineData: { mimeType: imageBase64.mimeType, data: imageBase64.data } }
+          ]
+        }],
+        generationConfig: { responseMimeType: 'application/json' }
+      });
 
-      if (!response.ok) {
-        throw new Error('Không thể kết nối tới máy chủ AI. Hãy kiểm tra lại API Key hoặc kết nối mạng 4G/WiFi.');
+      let result = null;
+      let lastError = '';
+      for (const model of models) {
+        let response;
+        try {
+          response = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`,
+            { method: 'POST', headers: { 'Content-Type': 'application/json' }, body }
+          );
+        } catch (netErr) {
+          throw new Error('Không có kết nối mạng tới máy chủ AI. Hãy kiểm tra 4G/WiFi rồi thử lại.');
+        }
+        if (response.ok) {
+          result = await response.json();
+          break;
+        }
+        let detail = '';
+        try {
+          const errJson = await response.json();
+          detail = errJson?.error?.message || '';
+        } catch (_) {}
+        lastError = `Lỗi ${response.status}${detail ? `: ${detail}` : ''}`;
+        // Key sai hoặc hết hạn mức thì không cần thử model khác
+        if (response.status === 400 || response.status === 401 || response.status === 403 || response.status === 429) {
+          if (!/not found|not supported|deprecated/i.test(detail)) break;
+        }
       }
 
-      const result = await response.json();
+      if (!result) {
+        throw new Error(`Không thể kết nối tới máy chủ AI. ${lastError}`);
+      }
+
       const rawText = result?.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
-      const parsed = JSON.parse(rawText);
+      const cleaned = rawText.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim();
+      const parsed = JSON.parse(cleaned);
       setDiagnosisResult(parsed);
     } catch (err) {
       setErrorMsg(err.message || 'Có lỗi xảy ra khi phân tích ảnh.');
