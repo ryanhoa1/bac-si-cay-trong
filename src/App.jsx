@@ -199,7 +199,7 @@ Trả về kết quả định dạng JSON thuần túy với các trường:
         throw new Error('Vui lòng nhập Gemini API Key hoặc địa chỉ Webhook trong mục Cài đặt (biểu tượng bánh răng góc trên bên phải) để phân tích ảnh chụp thực tế.');
       }
 
-      const models = ['gemini-2.5-flash', 'gemini-flash-latest', 'gemini-2.0-flash'];
+      const models = ['gemini-3.8-flash', 'gemini-flash-latest', 'gemini-3.5-flash', 'gemini-2.5-flash'];
       const body = JSON.stringify({
         contents: [{
           parts: [
