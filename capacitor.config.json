@@ -1,0 +1,6 @@
+{
+  "appId": "com.bacsicaytrong.app",
+  "appName": "Bác Sĩ Cây Trồng AI",
+  "webDir": "dist",
+  "bundledWebRuntime": false
+}

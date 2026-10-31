@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#15803d" />
+  <title>Bác Sĩ Cây Trồng AI - Bản Độc Lập</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-stone-100 text-stone-900 select-none pb-20 max-w-md mx-auto shadow-xl min-h-screen">
+  <header class="bg-green-800 text-white p-4 sticky top-0 z-20 shadow flex justify-between items-center">
+    <div>
+      <h1 class="font-bold text-lg">🌱 Bác Sĩ Cây Trồng AI</h1>
+      <p class="text-xs text-green-100">Chẩn đoán bệnh cây & Công thức sinh học</p>
+    </div>
+    <button onclick="toggleModal()" class="bg-white/20 px-3 py-1.5 rounded-lg text-xs font-semibold">⚙️ Cài đặt AI</button>
+  </header>
+
+  <main class="p-4 space-y-4">
+    <div class="bg-white p-4 rounded-2xl shadow-sm border border-stone-200 space-y-3">
+      <h2 class="font-bold text-sm text-stone-800">📸 Chụp hoặc chọn ảnh lá/cây bị bệnh</h2>
+      <div class="grid grid-cols-2 gap-2">
+        <label class="bg-green-700 text-white text-center py-3 rounded-xl font-bold text-xs cursor-pointer">
+          Mở Camera Chụp
+          <input type="file" accept="image/*" capture="environment" onchange="previewFile(event)" class="hidden" />
+        </label>
+        <label class="bg-emerald-50 text-emerald-900 border border-emerald-200 text-center py-3 rounded-xl font-bold text-xs cursor-pointer">
+          Tải Ảnh Từ Máy
+          <input type="file" accept="image/*" onchange="previewFile(event)" class="hidden" />
+        </label>
+      </div>
+      <div id="previewBox" class="hidden space-y-2 pt-2">
+        <img id="previewImg" class="max-h-56 mx-auto rounded-xl" />
+        <input id="cropNote" type="text" placeholder="Ghi chú (VD: Cây dừa bị trắng lá...)" class="w-full border rounded-xl px-3 py-2 text-xs" />
+        <button onclick="runDiagnosis()" id="btnAnalyze" class="w-full bg-amber-600 text-white font-bold py-2.5 rounded-xl text-sm">🔍 Phân Tích Bệnh Ngay</button>
+      </div>
+      <div id="resultBox" class="hidden bg-green-50 border border-green-300 p-3 rounded-xl text-xs space-y-1.5"></div>
+    </div>
+  </main>
+
+  <div id="settingsModal" class="hidden fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50">
+    <div class="bg-white rounded-2xl p-4 w-full max-w-sm space-y-3">
+      <h3 class="font-bold text-sm">Cấu hình Gemini API Key</h3>
+      <input id="apiKeyInput" type="password" placeholder="Nhập Gemini API Key (AIzaSy...)" class="w-full border rounded-xl px-3 py-2 text-xs" />
+      <div class="flex justify-end gap-2">
+        <button onclick="toggleModal()" class="px-3 py-1.5 text-xs bg-stone-200 rounded-lg">Đóng</button>
+        <button onclick="saveKey()" class="px-4 py-1.5 text-xs bg-green-700 text-white font-bold rounded-lg">Lưu Key</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let currentBase64 = null;
+    let currentMime = 'image/jpeg';
+    document.getElementById('apiKeyInput').value = localStorage.getItem('bsct_gemini_key') || '';
+
+    function toggleModal() {
+      document.getElementById('settingsModal').classList.toggle('hidden');
+    }
+    function saveKey() {
+      localStorage.setItem('bsct_gemini_key', document.getElementById('apiKeyInput').value.trim());
+      toggleModal();
+    }
+    function previewFile(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+      currentMime = file.type || 'image/jpeg';
+      const reader = new FileReader();
+      reader.onload = () => {
+        document.getElementById('previewImg').src = reader.result;
+        document.getElementById('previewBox').classList.remove('hidden');
+        currentBase64 = reader.result.split(',')[1];
+      };
+      reader.readAsDataURL(file);
+    }
+    async function runDiagnosis() {
+      const key = localStorage.getItem('bsct_gemini_key');
+      if (!key) { toggleModal(); return; }
+      const btn = document.getElementById('btnAnalyze');
+      const resBox = document.getElementById('resultBox');
+      btn.innerText = 'Đang phân tích...';
+      try {
+        const note = document.getElementById('cropNote').value;
+        const resp = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=' + key, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [
+              { text: 'Phân tích bệnh cây trồng trong ảnh và hướng dẫn cách trị sinh học ngắn gọn, rõ ràng. Ghi chú: ' + note },
+              { inlineData: { mimeType: currentMime, data: currentBase64 } }
+            ]}]
+          })
+        });
+        const data = await resp.json();
+        const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || 'Không nhận diện được.';
+        resBox.innerHTML = '<div class="whitespace-pre-line">' + text + '</div>';
+        resBox.classList.remove('hidden');
+      } catch (err) {
+        alert('Lỗi kết nối AI: ' + err.message);
+      } finally {
+        btn.innerText = '🔍 Phân Tích Bệnh Ngay';
+      }
+    }
+  </script>
+</body>
+</html>
